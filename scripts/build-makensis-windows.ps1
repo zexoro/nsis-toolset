@@ -4,7 +4,13 @@ $out = [System.IO.Path]::GetFullPath($args[0])
 
 & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install zlib:x64-windows-static
 if ($LASTEXITCODE -ne 0) { throw "vcpkg failed" }
-$zlib = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static"
+$vcpkgZlib = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static"
+
+# NSIS looks for a zlib import library named zdll.lib; link the static zlib under that name.
+$zlib = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\out\zlib'))
+New-Item -ItemType Directory -Force "$zlib\include", "$zlib\lib" | Out-Null
+Copy-Item "$vcpkgZlib\include\zlib.h", "$vcpkgZlib\include\zconf.h" "$zlib\include"
+Copy-Item "$vcpkgZlib\lib\zlib.lib" "$zlib\lib\zdll.lib"
 
 Push-Location (Join-Path $PSScriptRoot '..\src')
 try {
