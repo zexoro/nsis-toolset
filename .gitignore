@@ -3,3 +3,4 @@
 /dist/
 *.tar.bz2
 tests/*.exe
+.DS_Store
