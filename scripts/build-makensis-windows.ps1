@@ -3,6 +3,8 @@
 # a 32-bit makensis runs on x64 and arm64 Windows.
 $ErrorActionPreference = 'Stop'
 $out = [System.IO.Path]::GetFullPath($args[0])
+$version = (Get-Content (Join-Path $PSScriptRoot '..\nsis.env') | Where-Object { $_ -match '^NSIS_VERSION=' }) -replace '^NSIS_VERSION=', ''
+$major, $minor = $version.Split('.')
 
 & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install zlib:x86-windows-static
 if ($LASTEXITCODE -ne 0) { throw "vcpkg failed" }
@@ -25,6 +27,7 @@ try {
         SKIPSTUBS=all SKIPPLUGINS=all SKIPUTILS=all SKIPMISC=all SKIPDOC=all `
         "ZLIB_W32=$zlib" `
         "PREFIX=$out" `
+        "VERSION=$version" "VER_MAJOR=$major" "VER_MINOR=$minor" `
         install-compiler
     if ($LASTEXITCODE -ne 0) { throw "scons failed" }
 }

@@ -106,7 +106,10 @@ jobs:
           [[ "$RUNNER_OS" == "Windows" ]] && makensis="$makensis.exe"
           chmod +x "$makensis"
           if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info "$makensis"; fi
-          "$makensis" -VERSION
+          source nsis.env
+          reported=$("$makensis" -VERSION)
+          echo "makensis $reported"
+          [[ "$reported" == "v$NSIS_VERSION" ]] || { echo "expected v$NSIS_VERSION" >&2; exit 1; }
           "$makensis" -V2 tests/smoke.nsi
           test -s tests/smoke.exe
       - name: Archive
