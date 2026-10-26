@@ -101,10 +101,13 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          chmod +x nsis/makensis* || true
-          if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info nsis/makensis; fi
-          nsis/makensis -VERSION
-          nsis/makensis -V2 tests/smoke.nsi
+          # makensis finds its data relative to its own path, so call it by absolute path.
+          makensis="$PWD/nsis/makensis"
+          [[ "$RUNNER_OS" == "Windows" ]] && makensis="$makensis.exe"
+          chmod +x "$makensis"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info "$makensis"; fi
+          "$makensis" -VERSION
+          "$makensis" -V2 tests/smoke.nsi
           test -s tests/smoke.exe
       - name: Archive
         run: |

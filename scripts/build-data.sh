@@ -5,9 +5,8 @@ set -euo pipefail
 out=$(realpath -m "$1")
 cd "$(dirname "$0")/../src"
 
-# Serial build: parallel installs of the misc data were seen failing with
+# Serial on purpose: with -j, installing the misc data fails with
 # "No such file or directory" for files that exist in the source tree.
-ls "Contrib/Language files" | head -3
 scons \
   XGCC_W32_PREFIX=i686-w64-mingw32- \
   NSIS_CONFIG_CONST_DATA_PATH=no \

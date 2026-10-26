@@ -25,6 +25,10 @@ try {
         "PREFIX=$out" `
         install-compiler
     if ($LASTEXITCODE -ne 0) { throw "scons failed" }
+
+    # Same layout as the POSIX builds: makensis at the archive root, next to Stubs/.
+    Move-Item (Join-Path $out 'Bin\makensis.exe') (Join-Path $out 'makensis.exe') -Force
+    Remove-Item (Join-Path $out 'Bin') -Recurse -Force
 }
 finally {
     Pop-Location
