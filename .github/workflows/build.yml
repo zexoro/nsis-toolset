@@ -101,8 +101,8 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          # makensis finds its data relative to its own path, so call it by absolute path.
-          makensis="$PWD/nsis/makensis"
+          # makensis takes the parent of its own directory (Bin/) as its data directory.
+          makensis="$PWD/nsis/Bin/makensis"
           [[ "$RUNNER_OS" == "Windows" ]] && makensis="$makensis.exe"
           chmod +x "$makensis"
           if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info "$makensis"; fi

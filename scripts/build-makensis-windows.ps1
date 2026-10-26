@@ -1,10 +1,12 @@
-# Builds makensis.exe (x64) with MSVC into $args[0], linking zlib from vcpkg statically.
+# Builds makensis.exe with MSVC into $args[0]\Bin, linking zlib from vcpkg statically.
+# It targets x86 so its default stub is x86-unicode, the same as on the other hosts;
+# a 32-bit makensis runs on x64 and arm64 Windows.
 $ErrorActionPreference = 'Stop'
 $out = [System.IO.Path]::GetFullPath($args[0])
 
-& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install zlib:x64-windows-static
+& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install zlib:x86-windows-static
 if ($LASTEXITCODE -ne 0) { throw "vcpkg failed" }
-$vcpkgZlib = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static"
+$vcpkgZlib = "$env:VCPKG_INSTALLATION_ROOT\installed\x86-windows-static"
 
 # NSIS looks for a zlib import library named zdll.lib; link the static zlib under that name.
 $zlib = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\out\zlib'))
@@ -18,17 +20,13 @@ Copy-Item $staticLib.FullName "$zlib\lib\zdll.lib"
 Push-Location (Join-Path $PSScriptRoot '..\src')
 try {
     scons `
-        TARGET_ARCH=amd64 `
+        TARGET_ARCH=x86 `
         NSIS_CONFIG_CONST_DATA_PATH=no `
         SKIPSTUBS=all SKIPPLUGINS=all SKIPUTILS=all SKIPMISC=all SKIPDOC=all `
         "ZLIB_W32=$zlib" `
         "PREFIX=$out" `
         install-compiler
     if ($LASTEXITCODE -ne 0) { throw "scons failed" }
-
-    # Same layout as the POSIX builds: makensis at the archive root, next to Stubs/.
-    Move-Item (Join-Path $out 'Bin\makensis.exe') (Join-Path $out 'makensis.exe') -Force
-    Remove-Item (Join-Path $out 'Bin') -Recurse -Force
 }
 finally {
     Pop-Location
