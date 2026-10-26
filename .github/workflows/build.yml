@@ -107,7 +107,7 @@ jobs:
           chmod +x "$makensis"
           if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info "$makensis"; fi
           source nsis.env
-          reported=$("$makensis" -VERSION)
+          reported=$("$makensis" -VERSION | tr -d '\r')
           echo "makensis $reported"
           [[ "$reported" == "v$NSIS_VERSION" ]] || { echo "expected v$NSIS_VERSION" >&2; exit 1; }
           "$makensis" -V2 tests/smoke.nsi
