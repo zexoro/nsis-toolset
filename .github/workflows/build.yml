@@ -1,0 +1,149 @@
+name: Build
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  data:
+    name: data (stubs, plug-ins)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y scons mingw-w64 zlib1g-dev
+      - name: Fetch source
+        run: scripts/fetch-source.sh
+      - name: Build
+        run: scripts/build-data.sh out/data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: data
+          path: out/data
+
+  makensis:
+    name: makensis ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64,   os: ubuntu-24.04 }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm }
+          - { rid: osx,         os: macos-latest }
+          - { rid: win-x64,     os: windows-latest }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y scons zlib1g-dev
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install scons
+      - name: Install build tools (Windows)
+        if: runner.os == 'Windows'
+        run: pip install scons
+
+      - name: Fetch source
+        shell: bash
+        run: scripts/fetch-source.sh
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/build-makensis-posix.sh out/bin
+      - name: Build (macOS, universal)
+        if: runner.os == 'macOS'
+        run: >
+          scripts/build-makensis-posix.sh out/bin
+          "APPEND_CCFLAGS=-arch x86_64 -arch arm64 -mmacosx-version-min=11.0"
+          "APPEND_LINKFLAGS=-arch x86_64 -arch arm64 -mmacosx-version-min=11.0"
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: scripts/build-makensis-windows.ps1 out/bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: makensis-${{ matrix.rid }}
+          path: out/bin
+
+  package:
+    name: package ${{ matrix.rid }}
+    needs: [data, makensis]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64,   os: ubuntu-24.04 }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm }
+          - { rid: osx,         os: macos-latest }
+          - { rid: win-x64,     os: windows-latest }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: data
+          path: nsis
+      - uses: actions/download-artifact@v5
+        with:
+          name: makensis-${{ matrix.rid }}
+          path: nsis
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          # makensis takes the parent of its own directory (Bin/) as its data directory.
+          makensis="$PWD/nsis/Bin/makensis"
+          [[ "$RUNNER_OS" == "Windows" ]] && makensis="$makensis.exe"
+          chmod +x "$makensis"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then lipo -info "$makensis"; fi
+          source nsis.env
+          reported=$("$makensis" -VERSION | tr -d '\r')
+          echo "makensis $reported"
+          [[ "$reported" == "v$NSIS_VERSION" ]] || { echo "expected v$NSIS_VERSION" >&2; exit 1; }
+          "$makensis" -V2 tests/smoke.nsi
+          test -s tests/smoke.exe
+      - name: Archive
+        run: |
+          set -euo pipefail
+          source nsis.env
+          mkdir -p dist
+          tar -czf "dist/nsis-${NSIS_VERSION}-${{ matrix.rid }}.tar.gz" -C nsis .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.rid }}
+          path: dist
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: archive-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "NSIS toolset built from source." *.tar.gz SHA256SUMS
