@@ -115,6 +115,12 @@ jobs:
           [[ "$reported" == "v$NSIS_VERSION" ]] || { echo "expected v$NSIS_VERSION" >&2; exit 1; }
           "$makensis" -V2 tests/smoke.nsi
           test -s tests/smoke.exe
+          # Regression test: must not depend on the locale (std::bad_alloc under the C locale).
+          if [[ "$RUNNER_OS" != "Windows" ]]; then
+            rm -f tests/smoke.exe
+            env -i LC_ALL=C "$makensis" -V2 tests/smoke.nsi
+            test -s tests/smoke.exe
+          fi
       - name: Archive
         run: |
           set -euo pipefail
