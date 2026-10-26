@@ -20,3 +20,9 @@ fi
 
 rm -rf src && mkdir src
 tar -xjf "$archive" -C src --strip-components=1
+
+# Apply the toolset's patches (see patches/*.patch for the rationale of each).
+for p in patches/*.patch; do
+  echo "Applying $p"
+  patch --binary -p1 -d src --no-backup-if-mismatch < "$p"
+done

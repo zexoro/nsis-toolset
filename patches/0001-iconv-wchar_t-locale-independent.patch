@@ -1,0 +1,100 @@
+# Make makensis independent of the process locale (C/POSIX locale crash).
+#
+# Root cause: makensis converts between wchar_t and UTF-16/codepages with iconv,
+# addressing wchar_t by the iconv encoding name "wchar_t". libiconv on macOS
+# implements that name with the C library's mbrtowc/wcrtomb, so it depends on
+# LC_CTYPE. makensis never calls setlocale(LC_ALL, ""), so unless the environment
+# supplies a UTF-8 locale (which NSISRT_mbtowc happens to install as a side effect
+# of its "restore" call) the process is in the "C" locale, where every code point
+# >= 0x80 is rejected with EILSEQ. NSIS stores its internal string codes
+# (shell constants, variables, ...) as such code points, so the very first
+# add_string() fails in WCToUTF16LEHlpr::Create() and throws std::bad_alloc.
+#
+# Fix: address wchar_t through the explicit host-endian UCS-4 code that NSIS already
+# probes for (nsis_iconv_get_host_endian_ucs4_code), which is locale independent.
+# Identical semantics wherever wchar_t is 32 bit (Linux, macOS); falls back to
+# "wchar_t" otherwise.
+#
+diff --git a/Source/utf.cpp b/Source/utf.cpp
+index b1aa5ad..c900c3b 100644
+--- a/Source/utf.cpp
++++ b/Source/utf.cpp
+@@ -78,7 +78,7 @@ UINT WCFromCodePoint(wchar_t*Dest,UINT cchDest,UINT32 CodPt)
+   return 0;
+ #else
+   iconvdescriptor iconvd;
+-  if (!iconvd.Open("wchar_t",iconvdescriptor::GetHostEndianUCS4Code())) return 0;
++  if (!iconvd.Open(nsis_iconv_wchar_code(),iconvdescriptor::GetHostEndianUCS4Code())) return 0;
+   size_t inleft = 4;
+   UINT cchW = iconvd.Convert(&CodPt,&inleft,Dest,cchDest*sizeof(wchar_t)) / sizeof(wchar_t);
+   return !inleft ? cchW : 0;
+@@ -121,8 +121,8 @@ bool CharEncConv::Initialize(UINT32 ToEnc, UINT32 FromEnc)
+   return (IsWE(m_FE) || IsValidCodePage(FromEnc)) && (IsWE(m_TE) || IsValidCodePage(ToEnc));
+ #else
+   char f[50], t[COUNTOF(f)];
+-  if (IsWE(m_FE)) strcpy(f, "wchar_t"); else create_code_page_string(f, COUNTOF(f), m_FE);
+-  if (IsWE(m_TE)) strcpy(t, "wchar_t"); else create_code_page_string(t, COUNTOF(t), m_TE);
++  if (IsWE(m_FE)) strcpy(f, nsis_iconv_wchar_code()); else create_code_page_string(f, COUNTOF(f), m_FE);
++  if (IsWE(m_TE)) strcpy(t, nsis_iconv_wchar_code()); else create_code_page_string(t, COUNTOF(t), m_TE);
+   return m_TE == m_FE || m_iconvd.Open(t, f);
+ #endif
+ }
+@@ -536,7 +536,7 @@ l_restart:
+   else if (StreamEncoding().IsUTF16())
+   {
+ #ifndef _WIN32
+-    if (!iconvd.Open("wchar_t", iconvdescriptor::GetHostEndianUCS4Code())) goto l_unsupportedencoding;
++    if (!iconvd.Open(nsis_iconv_wchar_code(), iconvdescriptor::GetHostEndianUCS4Code())) goto l_unsupportedencoding;
+ #endif
+     const bool utf16be = StreamEncoding().IsUTF16BE();
+     unsigned short lead, trail, cchWC;
+diff --git a/Source/util.cpp b/Source/util.cpp
+index 9d011f5..29e9110 100644
+--- a/Source/util.cpp
++++ b/Source/util.cpp
+@@ -516,7 +516,7 @@ int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, const wchar_t* lpWideCharS
+ 
+   char cp[CODEPAGESTR_MAXLEN];
+   create_code_page_string(cp, COUNTOF(cp), CodePage);
+-  iconv_t cd = iconv_open(cp, "wchar_t");
++  iconv_t cd = iconv_open(cp, nsis_iconv_wchar_code());
+   size_t cchNull = 0;
+   if (cd == (iconv_t) -1) return 0;
+   if (cchWideChar < 0) cchWideChar = (int) wcslen(lpWideCharStr), ++cchNull;
+@@ -541,7 +541,7 @@ int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCSTR lpMultiByteStr,
+ 
+   char cp[CODEPAGESTR_MAXLEN];
+   create_code_page_string(cp, COUNTOF(cp), CodePage);
+-  iconv_t cd = iconv_open("wchar_t", cp);
++  iconv_t cd = iconv_open(nsis_iconv_wchar_code(), cp);
+   size_t cchNull = 0; // iconv on MacOS 14 & 15 does not parse the \0, we have to keep track of it.
+   if (cd == (iconv_t) -1) return 0;
+   if (cbMultiByte < 0) cbMultiByte = strlen(lpMultiByteStr), ++cchNull;
+@@ -564,7 +564,7 @@ BOOL IsValidCodePage(UINT CodePage)
+ {
+   char cp[CODEPAGESTR_MAXLEN];
+   create_code_page_string(cp, COUNTOF(cp), CodePage);
+-  iconv_t cd = iconv_open("wchar_t", cp);
++  iconv_t cd = iconv_open(nsis_iconv_wchar_code(), cp);
+   if (cd == (iconv_t) -1) return FALSE;
+   iconv_close(cd);
+   return TRUE;
+diff --git a/Source/util.h b/Source/util.h
+index 63adaba..e1665ef 100644
+--- a/Source/util.h
++++ b/Source/util.h
+@@ -236,6 +236,14 @@ inline size_t nsis_iconv_adaptor
+ }
+ 
+ const char* nsis_iconv_get_host_endian_ucs4_code();
++// iconv's "wchar_t" encoding is not locale independent everywhere: libiconv on macOS
++// converts it with the C library's mbrtowc/wcrtomb, which in the "C" locale reject every
++// code point >= 0x80 (EILSEQ). Use the explicit UCS-4 code when wchar_t is 32 bit.
++inline const char* nsis_iconv_wchar_code()
++{
++  const char *ucs4 = sizeof(wchar_t) == 4 ? nsis_iconv_get_host_endian_ucs4_code() : 0;
++  return ucs4 ? ucs4 : "wchar_t";
++}
+ bool nsis_iconv_reallociconv(iconv_t CD, char**In, size_t*cbInLeft, char**Mem, size_t&cbConverted);
+ void create_code_page_string(char*buf, size_t len, UINT code_page); // Create iconv code from Windows codepage
+ 

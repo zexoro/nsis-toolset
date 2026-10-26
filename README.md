@@ -15,6 +15,14 @@ Each release contains one archive per host platform with `makensis` and the NSIS
 
 `SHA256SUMS` lists the hash of every archive.
 
+## Patches
+
+`scripts/fetch-source.sh` verifies the pinned NSIS source archive and then applies every `patches/*.patch` in order (the rationale is in each patch header):
+
+| Patch | Purpose |
+| --- | --- |
+| `0001-iconv-wchar_t-locale-independent.patch` | Stock NSIS 3.13 aborts with `std::bad_alloc` on macOS when the locale is `C`/`POSIX` (for example `LC_ALL=C` or no `LANG`), because libiconv's `wchar_t` encoding follows the process locale. The patch uses the explicit UCS-4 encoding instead, so `makensis` behaves the same in every locale. |
+
 ## License
 
 The build scripts in this repository are under the [MIT license](LICENSE). The archives contain NSIS, which is under its own licenses (zlib/libpng, with parts under bzip2 and CPL terms); each archive includes NSIS's `COPYING` file.
