@@ -10,7 +10,10 @@ $vcpkgZlib = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static"
 $zlib = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\out\zlib'))
 New-Item -ItemType Directory -Force "$zlib\include", "$zlib\lib" | Out-Null
 Copy-Item "$vcpkgZlib\include\zlib.h", "$vcpkgZlib\include\zconf.h" "$zlib\include"
-Copy-Item "$vcpkgZlib\lib\zlib.lib" "$zlib\lib\zdll.lib"
+Get-ChildItem "$vcpkgZlib\lib" | Format-Table -AutoSize | Out-String | Write-Host
+$staticLib = Get-ChildItem "$vcpkgZlib\lib\*.lib" | Select-Object -First 1
+if (-not $staticLib) { throw "no zlib static library under $vcpkgZlib\lib" }
+Copy-Item $staticLib.FullName "$zlib\lib\zdll.lib"
 
 Push-Location (Join-Path $PSScriptRoot '..\src')
 try {

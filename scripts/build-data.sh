@@ -5,17 +5,15 @@ set -euo pipefail
 out=$(realpath -m "$1")
 cd "$(dirname "$0")/../src"
 
-scons -j"$(nproc)" \
+# Serial build: parallel installs of the misc data were seen failing with
+# "No such file or directory" for files that exist in the source tree.
+ls "Contrib/Language files" | head -3
+scons \
   XGCC_W32_PREFIX=i686-w64-mingw32- \
   NSIS_CONFIG_CONST_DATA_PATH=no \
-  SKIPUTILS=all SKIPDOC=all SKIPMISC=Graphics \
+  SKIPUTILS=all SKIPDOC=all \
   PREFIX="$out" \
   install
-
-# The source archive omits some images that Contrib/Graphics/SConscript lists,
-# so copy the graphics that do exist instead of letting scons install them.
-mkdir -p "$out/Contrib/Graphics"
-(cd Contrib/Graphics && find . -type f ! -name SConscript -exec cp --parents {} "$out/Contrib/Graphics/" \;)
 
 rm -f "$out/makensis"
 cp COPYING "$out/COPYING"
