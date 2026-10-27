@@ -24,6 +24,7 @@ The Linux archives hold a fully static `makensis` linked against musl (built in 
 | Patch | Purpose |
 | --- | --- |
 | `0001-iconv-wchar_t-locale-independent.patch` | Stock NSIS 3.13 aborts with `std::bad_alloc` on macOS when the locale is `C`/`POSIX` (for example `LC_ALL=C` or no `LANG`), because libiconv's `wchar_t` encoding follows the process locale. The patch uses the explicit UCS-4 encoding instead, so `makensis` behaves the same in every locale. |
+| `0002-iconv-musl-no-translit.patch` | `makensis` asks iconv for `CP<n>//TRANSLIT`, a glibc-only name; musl rejects it, which made a musl-linked `makensis` fail at start-up (`NSISRT_Initialize failed!`). On Linux without glibc the plain `CP<n>` name is used. |
 
 ## Static Linux build and code pages
 

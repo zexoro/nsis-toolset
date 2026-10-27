@@ -1,0 +1,23 @@
+# Accept code pages when iconv is musl's.
+#
+# create_code_page_string() appends the glibc-specific "//TRANSLIT" suffix to every
+# Windows code page name. musl's iconv_open() does not recognise that suffix and
+# fails for the name, so with a musl-linked makensis NSISRT_Initialize() reports
+# "NSISRT_Initialize failed!" (CP1252 is invalid) and no code page conversion works.
+# On Linux without glibc the plain "CP<n>" name is used instead.
+#
+--- a/Source/util.cpp
++++ b/Source/util.cpp
+@@ -498,7 +498,12 @@
+     _sntprintf(buf, len, _T("UTF-16%cE"), 1200 == code_page ? 'L' : 'B');
+     return;
+   }
++#if defined(__linux__) && !defined(__GLIBC__)
++  // musl's iconv_open() rejects the glibc-only "//TRANSLIT" suffix.
++  _sntprintf(buf, len, _T("CP%d"), code_page);
++#else
+   _sntprintf(buf, len, _T("CP%d//TRANSLIT"), code_page);
++#endif
+ }
+ #ifdef _UNICODE
+ void create_code_page_string(char*buf, size_t len, UINT code_page)
