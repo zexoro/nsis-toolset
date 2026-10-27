@@ -1,0 +1,19 @@
+name: Debug
+on: pull_request
+jobs:
+  d:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          cat > t.c <<'C'
+          #include <iconv.h>
+          #include <stdio.h>
+          #include <langinfo.h>
+          #include <locale.h>
+          int main(){
+            const char* n[][2]={{"wchar_t","UCS-4-INTERNAL"},{"wchar_t","UCS-4LE"},{"wchar_t","UTF-32LE"},{"wchar_t",""},{"wchar_t","CP1252"},{"WCHAR_T","UTF-32LE"},{"UTF-32LE","wchar_t"},{"UTF-32LE","CP1252"},{"wchar_t","UTF-16LE"},{"wchar_t","CP936"},{"wchar_t","CP932"},{"wchar_t","CP1256"},{"wchar_t","CP874"},{"wchar_t","CP1250"},{"wchar_t","CP1251"},{"wchar_t","CP1253"},{"wchar_t","CP1254"},{"wchar_t","CP1255"},{"wchar_t","CP1257"},{"wchar_t","CP1258"},{"wchar_t","CP949"},{"wchar_t","CP950"},{"wchar_t","ISO-8859-15"}};
+            for(int i=0;i<sizeof n/sizeof*n;i++){iconv_t c=iconv_open(n[i][0],n[i][1]);printf("%s <- '%s': %s\n",n[i][0],n[i][1],c==(iconv_t)-1?"FAIL":"ok");}
+            printf("codeset=%s\n",nl_langinfo(CODESET));
+          }
+          C
+          docker run --rm -v "$PWD:/w" -w /w alpine:3.22.1 sh -c 'apk add --no-cache build-base >/dev/null && gcc t.c -o t && ./t'
