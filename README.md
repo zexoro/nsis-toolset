@@ -13,6 +13,8 @@ Each release contains one archive per host platform with `makensis` and the NSIS
 | `nsis-<version>-osx.tar.gz` | macOS (universal: x64 and arm64) |
 | `nsis-<version>-win-x64.tar.gz` | Windows x64 |
 
+The Linux archives hold a fully static `makensis` linked against musl (built in an Alpine container), so it runs on any Linux distribution, glibc or musl (Alpine included), with no minimum glibc version.
+
 `SHA256SUMS` lists the hash of every archive.
 
 ## Patches
@@ -22,6 +24,11 @@ Each release contains one archive per host platform with `makensis` and the NSIS
 | Patch | Purpose |
 | --- | --- |
 | `0001-iconv-wchar_t-locale-independent.patch` | Stock NSIS 3.13 aborts with `std::bad_alloc` on macOS when the locale is `C`/`POSIX` (for example `LC_ALL=C` or no `LANG`), because libiconv's `wchar_t` encoding follows the process locale. The patch uses the explicit UCS-4 encoding instead, so `makensis` behaves the same in every locale. |
+| `0002-iconv-musl-no-translit.patch` | `makensis` asks iconv for `CP<n>//TRANSLIT`, a glibc-only name; musl rejects it, which made a musl-linked `makensis` fail at start-up (`NSISRT_Initialize failed!`). On Linux without glibc the plain `CP<n>` name is used. |
+
+## Static Linux build and code pages
+
+CI compiles a Modern UI 2 script for every language in `Contrib/Language files` with the static `makensis` (`tests/languages.sh`), in Unicode and in ANSI mode, on Ubuntu and inside a plain Alpine container. Unicode mode must pass for every language. musl's `iconv` supports fewer legacy code pages than glibc, so ANSI (`Unicode false`) installers may fail for some languages with the Linux archives; zexoro only builds Unicode installers, so this does not affect it. Failures in ANSI mode are reported in the CI log but do not fail the build.
 
 ## License
 

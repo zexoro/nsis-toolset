@@ -43,9 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install build tools (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y scons zlib1g-dev
       - name: Install build tools (macOS)
         if: runner.os == 'macOS'
         run: brew install scons
@@ -57,9 +54,24 @@ jobs:
         shell: bash
         run: scripts/fetch-source.sh
 
-      - name: Build (Linux)
+      # Linux: fully static, linked against musl (Alpine), so it runs on any distribution.
+      - name: Build (Linux, static musl)
         if: runner.os == 'Linux'
-        run: scripts/build-makensis-posix.sh out/bin
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          docker run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            -v "$PWD:/work" -w /work alpine:3.22.1 \
+            sh scripts/build-makensis-static.sh out/bin
+      - name: Verify static linking (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          bin=out/bin/Bin/makensis
+          file "$bin"
+          readelf -lW "$bin" | grep -E 'INTERP|Requesting' && { echo "has a dynamic interpreter" >&2; exit 1; } || true
+          readelf -dW "$bin" 2>/dev/null | grep NEEDED && { echo "has shared library dependencies" >&2; exit 1; } || true
+          file "$bin" | grep -Eq 'statically linked|static-pie linked'
       - name: Build (macOS, universal)
         if: runner.os == 'macOS'
         run: >
@@ -121,6 +133,23 @@ jobs:
             env -i LC_ALL=C "$makensis" -V2 tests/smoke.nsi
             test -s tests/smoke.exe
           fi
+      - name: Smoke test and language check (Alpine, Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work alpine:3.22.1 sh -euc '
+            apk add --no-cache bash
+            makensis=/work/nsis/Bin/makensis
+            "$makensis" -VERSION
+            rm -f tests/smoke.exe
+            env -i LC_ALL=C "$makensis" -V2 tests/smoke.nsi
+            test -s tests/smoke.exe
+            rm -f tests/smoke.exe
+            bash tests/languages.sh "$makensis"
+          '
+      - name: Language check (Linux)
+        if: runner.os == 'Linux'
+        run: tests/languages.sh "$PWD/nsis/Bin/makensis"
       - name: Archive
         run: |
           set -euo pipefail
